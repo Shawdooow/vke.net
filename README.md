@@ -44,7 +44,7 @@ vke is in beta development stage.
 - [GLFW](https://www.glfw.org/) if you use the `VkWindow` class.
 - [Vulkan Sdk](https://www.lunarg.com/vulkan-sdk/), **glslc** has to be in the path.
 
-`vke.net` supports `netcoreapp3.0`.
+`vke.net` supports `netcoreapp3.1`.
 
 # Tutorials
 
