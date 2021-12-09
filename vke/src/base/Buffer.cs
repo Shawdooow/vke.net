@@ -4,6 +4,7 @@
 using System;
 using Vulkan;
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 
@@ -12,7 +13,7 @@ namespace vke {
 	/// </summary>
 	public class Buffer : Resource {
 		internal VkBuffer handle;
-		protected VkBufferCreateInfo createInfo = VkBufferCreateInfo.New ();
+		protected VkBufferCreateInfo createInfo;
 		/// <summary>Native handle of this vulkan buffer.</summary>
 		/// <value>The handle.</value>
 		public VkBuffer Handle => handle;
@@ -47,7 +48,7 @@ namespace vke {
 		/// </summary>
 		public sealed override void Activate () {
 			if (state != ActivableState.Activated) {
-				Utils.CheckResult (vkCreateBuffer (Dev.VkDev, ref createInfo, IntPtr.Zero, out handle));
+				CheckResult (vkCreateBuffer (Dev.Handle, ref createInfo, IntPtr.Zero, out handle));
 #if MEMORY_POOLS
 				Dev.resourceManager.Add (this);
 #else
@@ -61,14 +62,14 @@ namespace vke {
 
 		#region Implement abstract members of the Resource abstract class.
 		internal override void updateMemoryRequirements () {
-			vkGetBufferMemoryRequirements (Dev.VkDev, handle, out memReqs);
+			vkGetBufferMemoryRequirements (Dev.Handle, handle, out memReqs);
 		}
 
 		internal override void bindMemory () {
 #if MEMORY_POOLS
-			Utils.CheckResult (vkBindBufferMemory (Dev.VkDev, handle, memoryPool.vkMemory, poolOffset));
+			CheckResult (vkBindBufferMemory (Dev.Handle, handle, memoryPool.vkMemory, poolOffset));
 #else
-			Utils.CheckResult (vkBindBufferMemory (Dev.VkDev, handle, vkMemory, 0));
+			CheckResult (vkBindBufferMemory (Dev.Handle, handle, vkMemory, 0));
 #endif
 		}
 		#endregion
@@ -145,7 +146,7 @@ namespace vke {
 		protected override void Dispose (bool disposing) {
 			if (state == ActivableState.Activated) {
 				base.Dispose (disposing);
-				vkDestroyBuffer (Dev.VkDev, handle, IntPtr.Zero);
+				vkDestroyBuffer (Dev.Handle, handle, IntPtr.Zero);
 			}
 			state = ActivableState.Disposed;
 		}

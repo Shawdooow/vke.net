@@ -68,7 +68,6 @@ namespace vke {
 
 		public bool HasSwapChainSupport { get; private set; }
 		public IntPtr Handle => phy;
-		public bool GetDeviceExtensionSupported (string extName) => SupportedExtensions (IntPtr.Zero).Contains (extName);
 
 		#region CTOR
 		internal PhysicalDevice (IntPtr vkPhy)
@@ -78,6 +77,7 @@ namespace vke {
 			// Gather physical Device memory properties
 			IntPtr tmp = Marshal.AllocHGlobal (Marshal.SizeOf<VkPhysicalDeviceMemoryProperties> ());
 			vkGetPhysicalDeviceMemoryProperties (phy, tmp);
+
 			memoryProperties = Marshal.PtrToStructure<VkPhysicalDeviceMemoryProperties> (tmp);
 			Marshal.FreeHGlobal (tmp);
 
@@ -94,6 +94,8 @@ namespace vke {
 		}
 		#endregion
 
+		public bool GetDeviceExtensionSupported (string extName) => SupportedExtensions ().Contains (extName);
+		public string [] SupportedExtensions () => SupportedExtensions (IntPtr.Zero);
 		public string [] SupportedExtensions (IntPtr layer)
 		{
 			CheckResult (vkEnumerateDeviceExtensionProperties (phy, layer, out uint count, IntPtr.Zero));
@@ -165,10 +167,10 @@ namespace vke {
 			return result == VkResult.Success;
 		}
 		public VkPhysicalDeviceToolPropertiesEXT[] GetToolProperties () {
-			Utils.CheckResult (vkGetPhysicalDeviceToolPropertiesEXT (phy , out uint count, IntPtr.Zero));
+			CheckResult (vkGetPhysicalDeviceToolPropertiesEXT (phy , out uint count, IntPtr.Zero));
 			int sizeStruct = Marshal.SizeOf<VkPhysicalDeviceToolPropertiesEXT> ();
 			IntPtr ptrTools = Marshal.AllocHGlobal (sizeStruct * (int)count);
-			Utils.CheckResult (vkGetPhysicalDeviceToolPropertiesEXT (phy , out count, ptrTools));
+			CheckResult (vkGetPhysicalDeviceToolPropertiesEXT (phy , out count, ptrTools));
 
 			VkPhysicalDeviceToolPropertiesEXT[] result = new VkPhysicalDeviceToolPropertiesEXT[count];
 			IntPtr tmp = ptrTools;

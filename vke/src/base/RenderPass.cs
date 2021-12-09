@@ -104,26 +104,21 @@ namespace vke {
 				foreach (SubPass sp in subpasses)
 					spDescs.Add (sp.SubpassDescription);
 
-				VkRenderPassCreateInfo renderPassInfo = VkRenderPassCreateInfo.New();
-				renderPassInfo.attachmentCount = (uint)attachments.Count;
-				renderPassInfo.pAttachments = attachments.Pin ();
-				renderPassInfo.subpassCount = (uint)spDescs.Count;
-				renderPassInfo.pSubpasses = spDescs.Pin ();
-				renderPassInfo.dependencyCount = (uint)dependencies.Count;
-				renderPassInfo.pDependencies = dependencies.Pin ();
+				VkRenderPassCreateInfo renderPassInfo = default;
+				renderPassInfo.pAttachments = attachments;
+				renderPassInfo.pSubpasses = spDescs;
+				renderPassInfo.pDependencies = dependencies;
 				if (PNext != null)
 					renderPassInfo.pNext = PNext.GetPointer ();
 
 				handle = Dev.CreateRenderPass (renderPassInfo);
 
-				foreach (SubPass sp in subpasses)
-					sp.UnpinLists ();
-
 				if (PNext != null)
 					PNext.ReleasePointer ();
-				attachments.Unpin ();
-				spDescs.Unpin ();
-				dependencies.Unpin ();
+
+				renderPassInfo.Dispose ();
+				foreach (VkSubpassDescription spd in spDescs)
+					spd.Dispose ();
 			}
 			base.Activate ();
 		}
@@ -203,17 +198,16 @@ namespace vke {
 		/// </summary>
 		public void Begin (PrimaryCommandBuffer cmd, FrameBuffer frameBuffer, uint width, uint height, VkSubpassContents contents = VkSubpassContents.Inline) {
 
-			VkRenderPassBeginInfo info = VkRenderPassBeginInfo.New();
-			info.renderPass = handle;
-			info.renderArea.extent.width = width;
-			info.renderArea.extent.height = height;
-			info.clearValueCount = (uint)ClearValues.Count;
-			info.pClearValues = ClearValues.Pin ();
-			info.framebuffer = frameBuffer.handle;
+			using (VkRenderPassBeginInfo info = new VkRenderPassBeginInfo {
+						renderPass = handle,
+						renderArea = new VkRect2D (default, new VkExtent2D (width, height)),
+						pClearValues = ClearValues,
+						framebuffer = frameBuffer.handle
+			}){
 
-			vkCmdBeginRenderPass (cmd.Handle, ref info, contents);
+				vkCmdBeginRenderPass (cmd.Handle, info, contents);
 
-			ClearValues.Unpin ();
+			}
 		}
 		/// <summary>
 		/// Switch to next subpass

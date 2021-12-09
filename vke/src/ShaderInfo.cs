@@ -9,15 +9,13 @@ namespace vke {
 	/// This class is a helper class for VkPipelineShaderStageCreateInfo creation.
 	/// </summary>
 	public class ShaderInfo : IDisposable {
-		readonly FixedUtf8String EntryPoint;
-
-		protected VkPipelineShaderStageCreateInfo info = VkPipelineShaderStageCreateInfo.New ();
+		protected VkPipelineShaderStageCreateInfo info;
 		protected Device dev;
 
 		public VkShaderStageFlags Stage => info.stage;
 		public VkPipelineShaderStageCreateInfo Info => info;
 
-		public void RecreateModule(IntPtr code, UIntPtr codeSize) {
+		public void RecreateModule(uint[] code, UIntPtr codeSize) {
 			if (dev == null)
 				throw new Exception ("[ShaderInfo]Trying to recreate unowned shader module.");
 			dev.DestroyShaderModule (info.module);
@@ -34,7 +32,7 @@ namespace vke {
 		/// <param name="codeSize">Code size in byte</param>
 		/// <param name="specializationInfo">Specialization info.</param>
 		/// <param name="entryPoint">shader entry point</param>
-		public ShaderInfo (Device dev, VkShaderStageFlags stageFlags, IntPtr code, UIntPtr codeSize, SpecializationInfo specializationInfo = null, string entryPoint = "main"):
+		public ShaderInfo (Device dev, VkShaderStageFlags stageFlags, uint[] code, UIntPtr codeSize, SpecializationInfo specializationInfo = null, string entryPoint = "main"):
 			this(stageFlags, dev.CreateShaderModule (code, codeSize), specializationInfo, entryPoint) {
 			this.dev = dev;//keep dev for destroying module created in this CTOR
 		}
@@ -44,7 +42,7 @@ namespace vke {
 		/// <param name="dev">vke Device</param>
 		/// <param name="_stageFlags">Stage flags.</param>
 		/// <param name="_spirvPath">
-		/// Path to a compiled SpirV Shader on disk or as embedded ressource. See <see cref="Utils.GetStreamFromPath"/> for more information.
+		/// Path to a compiled SpirV Shader on disk or as embedded ressource. See <see cref="Helpers.GetStreamFromPath"/> for more information.
 		/// </param>
 		/// <param name="specializationInfo">Specialization info</param>
 		/// <param name="entryPoint">shader entry point, 'main' by default.</param>
@@ -58,12 +56,11 @@ namespace vke {
 		/// destroyed on Dispose.
 		/// </summary>
 		public ShaderInfo (VkShaderStageFlags stageFlags, VkShaderModule module, SpecializationInfo specializationInfo = null, string entryPoint = "main") {
-			EntryPoint = new FixedUtf8String (entryPoint);
-
 			info.stage = stageFlags;
-			info.pName = EntryPoint;
+			info.pName = entryPoint;
 			info.module = module;
-			info.pSpecializationInfo = (specializationInfo == null) ? IntPtr.Zero : specializationInfo.InfosPtr;
+			if (specializationInfo != null)
+				info.pSpecializationInfo =  specializationInfo.infos;
 		}
 
 		#region IDisposable Support
@@ -71,12 +68,11 @@ namespace vke {
 
 		protected virtual void Dispose (bool disposing) {
 			if (!disposedValue) {
-				if (disposing) 
-					EntryPoint.Dispose ();
-				else
+				if (!disposing)
 					System.Diagnostics.Debug.WriteLine ("VKE ShaderInfo disposed by finalizer");
 
 				dev?.DestroyShaderModule (info.module);
+				info.Dispose();
 
 				disposedValue = true;
 			}

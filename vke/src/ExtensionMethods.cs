@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 
 using Vulkan;
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 	public static class ExtensionMethods {
@@ -25,96 +26,13 @@ namespace vke {
 			return true;
 		}
 
-		#region pinning
-		/// <summary>
-		/// list of pinned GCHandles used to pass value from managed to unmanaged code.
-		/// </summary>
-		public static Dictionary<object, GCHandle> handles = new Dictionary<object, GCHandle>();
-
-		/// <summary>
-		/// Unpin the specified object and free the GCHandle associated.
-		/// </summary>
-		public static void Unpin (this object obj) {
-			if (!handles.ContainsKey (obj)) {
-				Debug.WriteLine ("Trying to unpin unpinned object: {0}.", obj);
-				return;
-			}
-			handles[obj].Free ();
-			handles.Remove (obj);
-		}
-
-		/// <summary>
-		/// Pin the specified object and return a pointer. MUST be Unpined as soon as possible.
-		/// </summary>
-		public static IntPtr Pin (this object obj) {
-			if (handles.ContainsKey (obj)) {
-				Debug.WriteLine ("Trying to pin already pinned object: {0}", obj);
-				return handles[obj].AddrOfPinnedObject ();
-			}
-                
-            GCHandle hnd = GCHandle.Alloc (obj, GCHandleType.Pinned);
-            handles.Add (obj, hnd);
-            return hnd.AddrOfPinnedObject ();
-        }
-        public static IntPtr Pin<T> (this List<T> obj) {
-            if (handles.ContainsKey (obj)) 
-                Debug.WriteLine ("Pinning already pinned object: {0}", obj);
-                
-            GCHandle hnd = GCHandle.Alloc (obj.ToArray(), GCHandleType.Pinned);
-            handles.Add (obj, hnd);
-            return hnd.AddrOfPinnedObject ();
-        }
-		public static IntPtr Pin<T> (this T[] obj) {
-			if (handles.ContainsKey (obj))
-				Debug.WriteLine ("Pinning already pinned object: {0}", obj);
-
-			GCHandle hnd = GCHandle.Alloc (obj, GCHandleType.Pinned);
-			handles.Add (obj, hnd);
-			return hnd.AddrOfPinnedObject ();
-		}
-		public static IntPtr Pin (this string obj) {
-			if (handles.ContainsKey (obj)) {
-				Debug.WriteLine ("Trying to pin already pinned object: {0}", obj);
-				return handles[obj].AddrOfPinnedObject ();
-			}
-            byte[] n = System.Text.Encoding.UTF8.GetBytes(obj +'\0');
-			GCHandle hnd = GCHandle.Alloc (n, GCHandleType.Pinned);            
-            handles.Add (obj, hnd);
-            return hnd.AddrOfPinnedObject ();
-        }
-
-		//pin with pinning context
-		public static IntPtr Pin (this object obj, PinnedObjects ctx) {
-			GCHandle hnd = GCHandle.Alloc (obj, GCHandleType.Pinned);
-			ctx.Handles.Add (hnd);
-			return hnd.AddrOfPinnedObject ();
-		}
-		public static IntPtr Pin<T> (this IList<T> obj, PinnedObjects ctx) {
-			GCHandle hnd = GCHandle.Alloc (obj.ToArray (), GCHandleType.Pinned);
-			ctx.Handles.Add (hnd);
-			return hnd.AddrOfPinnedObject ();
-		}
-		public static IntPtr Pin<T> (this T[] obj, PinnedObjects ctx) {
-			GCHandle hnd = GCHandle.Alloc (obj, GCHandleType.Pinned);
-			ctx.Handles.Add (hnd);
-			return hnd.AddrOfPinnedObject ();
-		}
-		public static IntPtr Pin (this string obj, PinnedObjects ctx) {
-			byte[] n = System.Text.Encoding.UTF8.GetBytes (obj + '\0');
-			GCHandle hnd = GCHandle.Alloc (n, GCHandleType.Pinned);
-			ctx.Handles.Add (hnd);
-			return hnd.AddrOfPinnedObject ();
-		}
-
-		#endregion
-
 		#region DebugMarkers
 		public static void SetDebugMarkerName (this VkCommandBuffer obj, Device dev, string name) {
 			if (!dev.debugUtilsEnabled)
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.CommandBuffer,
 				(ulong)obj.Handle.ToInt64 ()) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkImageView obj, Device dev, string name) {
@@ -122,7 +40,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.ImageView,
 				(ulong)obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkSampler obj, Device dev, string name) {
@@ -130,7 +48,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.Sampler,
 				(ulong)obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkPipeline obj, Device dev, string name) {
@@ -138,7 +56,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.Pipeline,
 				obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkDescriptorSet obj, Device dev, string name) {
@@ -146,7 +64,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.DescriptorSet,
 				(ulong)obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkSemaphore obj, Device dev, string name) {
@@ -154,7 +72,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.Semaphore,
 				(ulong)obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		public static void SetDebugMarkerName (this VkFence obj, Device dev, string name) {
@@ -162,7 +80,7 @@ namespace vke {
 				return;
 			VkDebugUtilsObjectNameInfoEXT dmo = new VkDebugUtilsObjectNameInfoEXT (VkObjectType.Fence,
 				(ulong)obj.Handle) { pObjectName = name.Pin () };
-			Utils.CheckResult (vkSetDebugUtilsObjectNameEXT (dev.VkDev, ref dmo));
+			CheckResult (vkSetDebugUtilsObjectNameEXT (dev.Handle, ref dmo));
 			name.Unpin ();
 		}
 		#endregion
@@ -170,25 +88,46 @@ namespace vke {
 		#region shaderc
 
 
-		public static ShaderInfo CreateShaderInfo (this shaderc.Compiler comp, Device dev, string shaderPath, shaderc.ShaderKind shaderKind,
+		/*public static ShaderInfo CreateShaderInfo (this shaderc.Compiler comp, Device dev, string shaderPath, shaderc.ShaderKind shaderKind,
 			SpecializationInfo specializationInfo = null, string entryPoint = "main") {
 
 			using (shaderc.Result res = comp.Compile (shaderPath, shaderKind)) {
-				if (res.Status != shaderc.Status.Success) 
+				if (res.Status != shaderc.Status.Success)
 					throw new Exception ($"Shaderc compilation failure: {res.ErrorMessage}");
 				VkShaderStageFlags stageFlags = Utils.ShaderKindToStageFlag (shaderKind);
 				return new ShaderInfo (dev, stageFlags, res.CodePointer, (UIntPtr)res.CodeLength, specializationInfo, entryPoint);
 			}
-		}
+		}*/
 		#endregion
 
 		#region temp
 		public static void Dump (this Memory<byte> mem) {
 			Span<byte> s = mem.Span;
-			for (int i = 0; i < s.Length; i++) 
+			for (int i = 0; i < s.Length; i++)
 				Console.Write (s[i].ToString("X2") + (i % 32 == 0 ? "\n" : " "));
 		}
 		#endregion
 
+		public static VkSurfaceKHR CreateSurface (this VkInstance inst, IntPtr hWindow) {
+			ulong surf;
+			CheckResult ((VkResult)Glfw.Glfw3.CreateWindowSurface (inst.Handle, hWindow, IntPtr.Zero, out surf), "Create Surface Failed.");
+			return surf;
+		}
+
+		public static VkSurfaceFormatKHR [] GetSurfaceFormats (this VkPhysicalDevice phy, VkSurfaceKHR surf)
+		{
+			vkGetPhysicalDeviceSurfaceFormatsKHR (phy, surf, out uint count, IntPtr.Zero);
+			VkSurfaceFormatKHR [] formats = new VkSurfaceFormatKHR [count];
+			vkGetPhysicalDeviceSurfaceFormatsKHR (phy, surf, out count, formats.Pin ());
+			formats.Unpin ();
+			return formats;
+		}
+		public static VkPresentModeKHR[] GetSurfacePresentModes (this VkPhysicalDevice phy, VkSurfaceKHR surf) {
+			vkGetPhysicalDeviceSurfacePresentModesKHR (phy, surf, out uint count, IntPtr.Zero);
+			int[] modes = new int[count];
+			vkGetPhysicalDeviceSurfacePresentModesKHR (phy, surf, out count, modes.Pin ());
+			modes.Unpin ();
+			return modes.Cast<VkPresentModeKHR>().ToArray();
+		}
 	}
 }

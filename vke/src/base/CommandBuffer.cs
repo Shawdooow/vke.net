@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Vulkan;
 
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 	public class SecondaryCommandBuffer : CommandBuffer {
@@ -13,7 +14,7 @@ namespace vke {
 		}
 		public void Start (VkCommandBufferUsageFlags usage = 0, RenderPass rp = null, uint subpass = 0, FrameBuffer fb = null,
 			bool occlusionQueryEnable = false, VkQueryControlFlags queryFlags = 0, VkQueryPipelineStatisticFlags statFlags = 0) {
-			VkCommandBufferInheritanceInfo inheri = VkCommandBufferInheritanceInfo.New ();
+			VkCommandBufferInheritanceInfo inheri = default;
 			inheri.renderPass = rp == null ? 0 : rp.handle;
 			inheri.subpass = subpass;
 			inheri.framebuffer = fb == null ? 0 : fb.handle;
@@ -21,9 +22,9 @@ namespace vke {
 			inheri.queryFlags = queryFlags;
 			inheri.pipelineStatistics = statFlags;
 			VkCommandBufferBeginInfo cmdBufInfo = new VkCommandBufferBeginInfo (usage);
-			cmdBufInfo.pInheritanceInfo = inheri.Pin ();
-			Utils.CheckResult (vkBeginCommandBuffer (handle, ref cmdBufInfo));
-			inheri.Unpin ();
+			cmdBufInfo.pInheritanceInfo = inheri;
+			CheckResult (vkBeginCommandBuffer (handle, ref cmdBufInfo));
+			cmdBufInfo.Dispose();
 		}
 	}
 	public class PrimaryCommandBuffer : CommandBuffer {
@@ -37,28 +38,21 @@ namespace vke {
 		/// <param name="signal">Signal.</param>
 		/// <param name="fence">Fence.</param>
 		public void Submit (VkQueue queue, VkSemaphore wait = default, VkSemaphore signal = default, Fence fence = null) {
-			VkSubmitInfo submit_info = VkSubmitInfo.New ();
+			VkSubmitInfo submit_info = default;
+			submit_info.pWaitDstStageMask = VkPipelineStageFlags.ColorAttachmentOutput;
+			if (signal == VkSemaphore.Null)
+				submit_info.pSignalSemaphores = null;
+			else
+				submit_info.pSignalSemaphores = signal;
 
-			IntPtr dstStageMask = Marshal.AllocHGlobal (sizeof (uint));
-			Marshal.WriteInt32 (dstStageMask, (int)VkPipelineStageFlags.ColorAttachmentOutput);
+			if (wait == VkSemaphore.Null)
+				submit_info.pWaitSemaphores = null;
+			else
+				submit_info.pWaitSemaphores = wait;
+			submit_info.pCommandBuffers = handle;
 
-			using (PinnedObjects pctx = new PinnedObjects ()) {
-				submit_info.pWaitDstStageMask = dstStageMask;
-				if (signal != VkSemaphore.Null) {
-					submit_info.signalSemaphoreCount = 1;
-					submit_info.pSignalSemaphores = signal.Pin (pctx);
-				}
-				if (wait != VkSemaphore.Null) {
-					submit_info.waitSemaphoreCount = 1;
-					submit_info.pWaitSemaphores = wait.Pin (pctx);
-				}
-
-				submit_info.commandBufferCount = 1;
-				submit_info.pCommandBuffers = handle.Pin (pctx);
-
-				Utils.CheckResult (vkQueueSubmit (queue, 1, ref submit_info, fence));
-			}
-			Marshal.FreeHGlobal (dstStageMask);
+			CheckResult (vkQueueSubmit (queue, 1, submit_info, fence));
+			submit_info.Dispose();
 		}
 		/// <summary>
 		/// Put the command buffer in the recording state.
@@ -66,7 +60,7 @@ namespace vke {
 		/// <param name="usage">optional command buffer usage flags.</param>
 		public void Start (VkCommandBufferUsageFlags usage = 0) {
 			VkCommandBufferBeginInfo cmdBufInfo = new VkCommandBufferBeginInfo (usage);
-			Utils.CheckResult (vkBeginCommandBuffer (handle, ref cmdBufInfo));
+			CheckResult (vkBeginCommandBuffer (handle, ref cmdBufInfo));
 		}
 		/// <summary>
 		/// Execute secondary command buffers.
@@ -123,7 +117,7 @@ namespace vke {
 		/// Put the command buffer in the executable state if no errors are present in the recording.
 		/// </summary>
 		public void End () {
-            Utils.CheckResult (vkEndCommandBuffer (handle));
+            CheckResult (vkEndCommandBuffer (handle));
         }
         /// <summary>
         /// Update dynamic viewport state
@@ -206,7 +200,7 @@ namespace vke {
 		}
 		public void SetMemoryBarrier (VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask,
 			VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkDependencyFlags dependencyFlags = VkDependencyFlags.ByRegion) {
-			VkMemoryBarrier memoryBarrier = VkMemoryBarrier.New ();
+			VkMemoryBarrier memoryBarrier = default;
 			memoryBarrier.srcAccessMask = srcAccessMask;
 			memoryBarrier.dstAccessMask = dstAccessMask;
 			Vk.vkCmdPipelineBarrier (Handle, srcStageMask, dstStageMask,
@@ -215,28 +209,24 @@ namespace vke {
 		public void BeginRegion (string name, float r = 1f, float g = 0.1f, float b=0.1f, float a = 1f) {
 			if (!Device.debugUtilsEnabled)
 				return;
-			VkDebugMarkerMarkerInfoEXT info = VkDebugMarkerMarkerInfoEXT.New();
+			VkDebugMarkerMarkerInfoEXT info = default;
 			info.pMarkerName = name.Pin ();
-			unsafe {
-				info.color[0] = r;
-				info.color[1] = g;
-				info.color[2] = b;
-				info.color[3] = a;
-			}
+			info.color.X = r;
+			info.color.Y = g;
+			info.color.Z = b;
+			info.color.W = a;
 			vkCmdDebugMarkerBeginEXT (Handle, ref info);
 			name.Unpin ();
 		}
 		public void InsertDebugMarker (string name, float r = 1f, float g = 0.1f, float b=0.1f, float a = 1f) {
 			if (!Device.debugUtilsEnabled)
 				return;
-			VkDebugMarkerMarkerInfoEXT info = VkDebugMarkerMarkerInfoEXT.New();
+			VkDebugMarkerMarkerInfoEXT info = default;
 			info.pMarkerName = name.Pin ();
-			unsafe {
-				info.color[0] = r;
-				info.color[1] = g;
-				info.color[2] = b;
-				info.color[3] = a;
-			}
+			info.color.X = r;
+			info.color.Y = g;
+			info.color.Z = b;
+			info.color.W = a;
 			vkCmdDebugMarkerInsertEXT (Handle, ref info);
 			name.Unpin ();
 		}

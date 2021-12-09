@@ -7,6 +7,7 @@ using System.Diagnostics;
 using Vulkan;
 
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 	/// <summary>
@@ -24,8 +25,8 @@ namespace vke {
 		public static VkFormat DefaultTextureFormat = VkFormat.R8g8b8a8Unorm;
 
 		internal VkImage handle;
-		VkImageCreateInfo info = VkImageCreateInfo.New ();
-		uint[] queueFalillies;
+		VkImageCreateInfo info;
+		uint[] queuesFamillies;
 
 		/// <summary>
 		/// if true, the vkImage handle will not be destroyed on dispose, useful to create image for swapchain
@@ -82,6 +83,36 @@ namespace vke {
 			VkImageType type = VkImageType.Image2D, VkSampleCountFlags samples = VkSampleCountFlags.SampleCount1,
 			VkImageTiling tiling = VkImageTiling.Optimal, uint mipsLevels = 1, uint layers = 1, uint depth = 1,
 			VkImageCreateFlags createFlags = 0, VkSharingMode sharingMode = VkSharingMode.Exclusive, params uint[] queuesFamillies)
+			: this (device, format, usage, _memoryPropertyFlags, width, height, 0, type, samples, tiling,
+					mipsLevels, layers, depth, createFlags, sharingMode, queuesFamillies) {	}
+		/// <summary>
+		/// Create a new exportable Image, see VK_KHR_external_memory for more information.
+		/// </summary>
+		/// <remarks>
+		/// if exportHandleType is not 0, image will be exportable depending on the HandleType bitmask provided.
+		/// Initial layout will be automatically set to Undefined if tiling is optimal and Preinitialized if tiling is linear.
+		/// </remarks>
+		/// <param name="device">The logical device that create the image.</param>
+		/// <param name="format">format and type of the texel blocks that will be contained in the image</param>
+		/// <param name="usage">bitmask describing the intended usage of the image.</param>
+		/// <param name="_memoryPropertyFlags">Memory property flags.</param>
+		/// <param name="width">number of data in the X dimension of the image.</param>
+		/// <param name="height">number of data in the Y dimension of the image.</param>
+		/// <param name="exportHandleType">zero, or a bitmask of @ref VkExternalMemoryHandleTypeFlags specifying one or more external memory handle types.</param>
+		/// <param name="type">value specifying the basic dimensionality of the image. Layers in array textures do not count as a dimension for the purposes of the image type.</param>
+		/// <param name="samples">number of sample per texel.</param>
+		/// <param name="tiling">tiling arrangement of the texel blocks in memory.</param>
+		/// <param name="mipsLevels">describes the number of levels of detail available for minified sampling of the image.</param>
+		/// <param name="layers">number of layers in the image.</param>
+		/// <param name="depth">number of data in the Z dimension of the image</param>
+		/// <param name="createFlags">bitmask describing additional parameters of the image.</param>
+		/// <param name="sharingMode">value specifying the sharing mode of the image when it will be accessed by multiple queue families.</param>
+		/// <param name="queuesFamillies">list of queue families that will access this image (ignored if sharingMode is not CONCURRENT).</param>
+		public Image (Device device, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags _memoryPropertyFlags,
+			uint width, uint height, VkExternalMemoryHandleTypeFlags exportHandleType,
+			VkImageType type = VkImageType.Image2D, VkSampleCountFlags samples = VkSampleCountFlags.SampleCount1,
+			VkImageTiling tiling = VkImageTiling.Optimal, uint mipsLevels = 1, uint layers = 1, uint depth = 1,
+			VkImageCreateFlags createFlags = 0, VkSharingMode sharingMode = VkSharingMode.Exclusive, params uint[] queuesFamillies)
 			: base (device, _memoryPropertyFlags) {
 
 			info.imageType = type;
@@ -98,12 +129,16 @@ namespace vke {
 			info.sharingMode = sharingMode;
 			info.flags = createFlags;
 
-			this.queueFalillies = queuesFamillies;
+			this.queuesFamillies = queuesFamillies;
 			lastKnownLayout = info.initialLayout;
+			this.importExportHandleTypes = exportHandleType;
 
 			Activate ();
 		}
-
+		public Image (Device device, VkMemoryPropertyFlags memoryProperties, VkImageCreateInfo info, params uint[] queuesFamillies) :
+		base (device, memoryProperties) {
+			this.info = info;
+		}
 		/// <summary>
 		/// Import vkImage handle into a new Image class, native handle will be preserve on destruction.
 		/// </summary>
@@ -398,24 +433,34 @@ namespace vke {
 		#endregion
 
 		internal override void updateMemoryRequirements () {
-			vkGetImageMemoryRequirements (Dev.VkDev, handle, out memReqs);
+			vkGetImageMemoryRequirements (Dev.Handle, handle, out memReqs);
 		}
 		internal override void bindMemory () {
 #if MEMORY_POOLS
-			Utils.CheckResult (vkBindImageMemory (Dev.VkDev, handle, memoryPool.vkMemory, poolOffset));
+			CheckResult (vkBindImageMemory (Dev.Handle, handle, memoryPool.vkMemory, poolOffset));
 #else
-			Utils.CheckResult (vkBindImageMemory (Dev.VkDev, handle, vkMemory, 0));
+			CheckResult (vkBindImageMemory (Dev.Handle, handle, vkMemory, 0));
 #endif
 		}
 		public sealed override void Activate () {
 			if (state != ActivableState.Activated) {
-				if (info.sharingMode == VkSharingMode.Concurrent && queueFalillies?.Length > 0) {
-					info.queueFamilyIndexCount = (uint)queueFalillies.Length;
-					info.pQueueFamilyIndices = queueFalillies.Pin ();
-					Utils.CheckResult (vkCreateImage (Dev.VkDev, ref info, IntPtr.Zero, out handle));
-					queueFalillies.Unpin ();
+				VkExternalMemoryImageCreateInfo externalImgInfo = default;
+				if (importExportHandleTypes > 0 && importedHandle != IntPtr.Zero) {
+					externalImgInfo.handleTypes = importExportHandleTypes;
+					info.pNext = externalImgInfo.Pin ();
+				}
+
+				if (info.sharingMode == VkSharingMode.Concurrent && queuesFamillies?.Length > 0) {
+					info.queueFamilyIndexCount = (uint)queuesFamillies.Length;
+					info.pQueueFamilyIndices = queuesFamillies;
+					CheckResult (vkCreateImage (Dev.Handle, ref info, IntPtr.Zero, out handle));
 				} else
-					Utils.CheckResult (vkCreateImage (Dev.VkDev, ref info, IntPtr.Zero, out handle));
+					CheckResult (vkCreateImage (Dev.Handle, ref info, IntPtr.Zero, out handle));
+
+				if (importExportHandleTypes > 0 && importedHandle != IntPtr.Zero)
+					externalImgInfo.Unpin ();
+
+				info.pNext = IntPtr.Zero;
 #if MEMORY_POOLS
 				Dev.resourceManager.Add (this);
 #else
@@ -428,6 +473,19 @@ namespace vke {
 			base.Activate ();
 		}
 
+		public Image ExportTo (Device targetdev, VkExternalMemoryHandleTypeFlags handleTypes) {
+			VkMemoryHostPointerPropertiesEXT hostPointerProps = default;
+			VkResult res = vkGetMemoryHostPointerPropertiesEXT (Dev.Handle, handleTypes, importedHandle, out hostPointerProps);
+			if (res != VkResult.Success)
+				return null;
+			Image img = new Image (targetdev, memoryFlags, this.info, queuesFamillies);
+			img.importExportHandleTypes = handleTypes;
+			img.importedHandle = (IntPtr)Memory.Handle;
+			img.importedMemoryTypeBits = hostPointerProps.memoryTypeBits;
+			img.Activate ();
+			return img;
+		}
+
 		public void CreateView (VkImageViewType type = VkImageViewType.ImageView2D, VkImageAspectFlags aspectFlags = VkImageAspectFlags.Color,
 			int layerCount = -1, uint baseMipLevel = 0, int levelCount = -1, uint baseArrayLayer = 0,
 			VkComponentSwizzle r = VkComponentSwizzle.R,
@@ -435,8 +493,11 @@ namespace vke {
 			VkComponentSwizzle b = VkComponentSwizzle.B,
 			VkComponentSwizzle a = VkComponentSwizzle.A) {
 
+			if (type == VkImageViewType.ImageView2D)
+				layerCount = 1;
+
 			VkImageView view = default (VkImageView);
-			VkImageViewCreateInfo viewInfo = VkImageViewCreateInfo.New ();
+			VkImageViewCreateInfo viewInfo = default;
 			viewInfo.image = handle;
 			viewInfo.viewType = type;
 			viewInfo.format = Format;
@@ -450,7 +511,7 @@ namespace vke {
 			viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
 			viewInfo.subresourceRange.layerCount = layerCount < 0 ? info.arrayLayers : (uint)layerCount;
 
-			Utils.CheckResult (vkCreateImageView (Dev.VkDev, ref viewInfo, IntPtr.Zero, out view));
+			CheckResult (vkCreateImageView (Dev.Handle, ref viewInfo, IntPtr.Zero, out view));
 
 			if (Descriptor.imageView.Handle != 0)
 				Dev.DestroyImageView (Descriptor.imageView);
@@ -476,7 +537,7 @@ namespace vke {
 							   VkSamplerMipmapMode mipmapMode = VkSamplerMipmapMode.Linear, VkSamplerAddressMode addressMode = VkSamplerAddressMode.Repeat,
 			float maxAnisotropy = 1.0f, float minLod = 0.0f, float maxLod = -1f) {
 			VkSampler sampler;
-			VkSamplerCreateInfo sampInfo = VkSamplerCreateInfo.New ();
+			VkSamplerCreateInfo sampInfo = default;
 			sampInfo.maxAnisotropy = maxAnisotropy;
 			sampInfo.maxAnisotropy = 1.0f;// device->enabledFeatures.samplerAnisotropy ? device->properties.limits.maxSamplerAnisotropy : 1.0f;
 										  //samplerInfo.anisotropyEnable = device->enabledFeatures.samplerAnisotropy;
@@ -491,7 +552,7 @@ namespace vke {
 			sampInfo.compareOp = VkCompareOp.Never;
 			sampInfo.borderColor = VkBorderColor.FloatOpaqueWhite;
 
-			Utils.CheckResult (vkCreateSampler (Dev.VkDev, ref sampInfo, IntPtr.Zero, out sampler));
+			CheckResult (vkCreateSampler (Dev.Handle, ref sampInfo, IntPtr.Zero, out sampler));
 
 			if (Descriptor.sampler.Handle != 0)
 				Dev.DestroySampler (Descriptor.sampler);
@@ -556,7 +617,7 @@ namespace vke {
 			uint srcQueueFamilyIndex = Vk.QueueFamilyIgnored,
 			uint dstQueueFamilyIndex = Vk.QueueFamilyIgnored) {
 
-			VkImageMemoryBarrier imageMemoryBarrier = VkImageMemoryBarrier.New ();
+			VkImageMemoryBarrier imageMemoryBarrier = default;
 			imageMemoryBarrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
 			imageMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
 			imageMemoryBarrier.oldLayout = oldImageLayout;
@@ -589,7 +650,7 @@ namespace vke {
 			uint srcQueueFamilyIndex = Vk.QueueFamilyIgnored,
 			uint dstQueueFamilyIndex = Vk.QueueFamilyIgnored) {
 			// Create an image barrier object
-			VkImageMemoryBarrier imageMemoryBarrier = VkImageMemoryBarrier.New ();
+			VkImageMemoryBarrier imageMemoryBarrier = default;
 			imageMemoryBarrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
 			imageMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
 			imageMemoryBarrier.oldLayout = oldImageLayout;
@@ -762,7 +823,7 @@ namespace vke {
 				mipLevel = mipLevel,
 				arrayLayer = arrayLayer
 			};
-			vkGetImageSubresourceLayout (Dev.VkDev, this.handle, ref subresource, out VkSubresourceLayout result);
+			vkGetImageSubresourceLayout (Dev.Handle, this.handle, ref subresource, out VkSubresourceLayout result);
 			return result;
 		}
 

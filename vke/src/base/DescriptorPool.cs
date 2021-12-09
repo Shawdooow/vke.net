@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Vulkan;
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 	[Serializable]
@@ -23,7 +24,7 @@ namespace vke {
 		/// </summary>
 		/// <param name="device">the logical device that create the pool.</param>
 		/// <param name="maxSets">maximum number of descriptor sets that can be allocated from the pool</param>
-		public DescriptorPool (Device device, uint maxSets = 1) : base (device) {            
+		public DescriptorPool (Device device, uint maxSets = 1) : base (device) {
             MaxSets = maxSets;
         }
 		/// <summary>
@@ -37,19 +38,18 @@ namespace vke {
 
 			PoolSizes.AddRange (poolSizes);
 
-            Activate ();            
+            Activate ();
         }
 		#endregion
 
 		public sealed override void Activate () {
-			if (state != ActivableState.Activated) {            
-				VkDescriptorPoolCreateInfo info = VkDescriptorPoolCreateInfo.New();
-				info.poolSizeCount = (uint)PoolSizes.Count;
-				info.pPoolSizes = PoolSizes.Pin ();
+			if (state != ActivableState.Activated) {
+				VkDescriptorPoolCreateInfo info = default;
+				info.pPoolSizes = PoolSizes;
 				info.maxSets = MaxSets;
 
-				Utils.CheckResult (vkCreateDescriptorPool (Dev.VkDev, ref info, IntPtr.Zero, out handle));
-				PoolSizes.Unpin ();
+				CheckResult (vkCreateDescriptorPool (Dev.Handle, ref info, IntPtr.Zero, out handle));
+				info.Dispose();
 			}
 			base.Activate ();
 		}
@@ -64,25 +64,24 @@ namespace vke {
             return ds;
         }
         public void Allocate (DescriptorSet descriptorSet) {
-            VkDescriptorSetAllocateInfo allocInfo = VkDescriptorSetAllocateInfo.New();
+            VkDescriptorSetAllocateInfo allocInfo = default;
             allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = (uint)descriptorSet.descriptorSetLayouts.Count;
-            allocInfo.pSetLayouts = descriptorSet.descriptorSetLayouts.Pin();
+            allocInfo.pSetLayouts = descriptorSet.descriptorSetLayouts;
 
-            Utils.CheckResult (vkAllocateDescriptorSets (Dev.VkDev, ref allocInfo, out descriptorSet.handle));
+            CheckResult (vkAllocateDescriptorSets (Dev.Handle, ref allocInfo, out descriptorSet.handle));
 
-			descriptorSet.descriptorSetLayouts.Unpin ();
+			allocInfo.Dispose();
         }
         public void FreeDescriptorSet (params DescriptorSet[] descriptorSets) {
             if (descriptorSets.Length == 1) {
-                Utils.CheckResult (vkFreeDescriptorSets (Dev.VkDev, handle, 1, ref descriptorSets[0].handle));
+                CheckResult (vkFreeDescriptorSets (Dev.Handle, handle, 1, ref descriptorSets[0].handle));
                 return;
             }
-            Utils.CheckResult (vkFreeDescriptorSets (Dev.VkDev, handle, (uint)descriptorSets.Length, descriptorSets.Pin()));
+            CheckResult (vkFreeDescriptorSets (Dev.Handle, handle, (uint)descriptorSets.Length, descriptorSets.Pin()));
 			descriptorSets.Unpin ();
         }
         public void Reset () {
-            Utils.CheckResult (vkResetDescriptorPool (Dev.VkDev, handle, 0));
+            CheckResult (vkResetDescriptorPool (Dev.Handle, handle, 0));
         }
 
 		public override string ToString () {
@@ -94,7 +93,7 @@ namespace vke {
 			if (!disposing)
 				System.Diagnostics.Debug.WriteLine ($"CVKL DescriptorPool '{name}' disposed by finalizer");
 			if (state == ActivableState.Activated)
-				vkDestroyDescriptorPool (Dev.VkDev, handle, IntPtr.Zero);
+				vkDestroyDescriptorPool (Dev.Handle, handle, IntPtr.Zero);
 			base.Dispose (disposing);
 		}
 		#endregion

@@ -6,9 +6,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Vulkan;
 using static Vulkan.Vk;
-
+using static Vulkan.Utils;
 
 namespace vke {
 	/// <summary>
@@ -20,7 +21,9 @@ namespace vke {
 		public readonly PhysicalDevice phy;										/**Vulkan physical device class*/
 
 		VkDevice dev;
+		[Obsolete("Use Handle instead")]
 		public VkDevice VkDev => dev;                                           /**Vulkan logical device handle*/
+		public VkDevice Handle => dev;                                          /**Vulkan logical device handle*/
 
 
 		internal List<Queue> queues = new List<Queue> ();
@@ -36,7 +39,6 @@ namespace vke {
 
 		public void Activate (VkPhysicalDeviceFeatures enabledFeatures, params string[] extensions) {
 			List<VkDeviceQueueCreateInfo> qInfos = new List<VkDeviceQueueCreateInfo> ();
-			List<List<float>> prioritiesLists = new List<List<float>> ();//store pinned lists for later unpin
 
 			foreach (IGrouping<uint, Queue> qfams in queues.GroupBy (q => q.qFamIndex)) {
 				int qTot = qfams.Count ();
@@ -58,9 +60,8 @@ namespace vke {
 					sType = VkStructureType.DeviceQueueCreateInfo,
 					queueCount = qCountReached ? phy.QueueFamilies[qfams.Key].queueCount : qIndex,
 					queueFamilyIndex = qfams.Key,
-					pQueuePriorities = priorities.Pin ()
+					pQueuePriorities = priorities
 				});
-				prioritiesLists.Add (priorities);//add for unpined
 			}
 
 			//enable only supported exceptions
@@ -68,23 +69,24 @@ namespace vke {
 			for (int i = 0; i < extensions.Length; i++) {
 				if (phy.GetDeviceExtensionSupported (extensions[i]))
 					deviceExtensions.Add (new FixedUtf8String (extensions[i]));
+				else
+					Console.WriteLine ($"Unsupported device extension: {extensions[i]}");
 			}
 
-			VkDeviceCreateInfo deviceCreateInfo = VkDeviceCreateInfo.New ();
-			deviceCreateInfo.queueCreateInfoCount = (uint)qInfos.Count;
-			deviceCreateInfo.pQueueCreateInfos = qInfos.Pin ();
-			deviceCreateInfo.pEnabledFeatures = enabledFeatures.Pin ();
+			VkDeviceCreateInfo deviceCreateInfo = new VkDeviceCreateInfo ();
+			deviceCreateInfo.pQueueCreateInfos = qInfos;
+			deviceCreateInfo.pEnabledFeatures = enabledFeatures;
 
 			if (deviceExtensions.Count > 0) {
 				deviceCreateInfo.enabledExtensionCount = (uint)deviceExtensions.Count;
 				deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.Pin ();
 			}
 
-			Utils.CheckResult (vkCreateDevice (phy.Handle, ref deviceCreateInfo, IntPtr.Zero, out dev));
-			qInfos.Unpin ();
-			enabledFeatures.Unpin ();
-			foreach (List<float> fa in prioritiesLists)
-				fa.Unpin ();
+			CheckResult (vkCreateDevice (phy.Handle, ref deviceCreateInfo, IntPtr.Zero, out dev));
+
+			deviceCreateInfo.Dispose();
+			foreach (VkDeviceQueueCreateInfo qI in qInfos)
+				qI.Dispose();
 
 			if (deviceExtensions.Count > 0)
 				deviceExtensions.Unpin ();
@@ -104,8 +106,8 @@ namespace vke {
 		/// <returns>The semaphore native handle</returns>
 		public VkSemaphore CreateSemaphore () {
 			VkSemaphore tmp;
-			VkSemaphoreCreateInfo info = VkSemaphoreCreateInfo.New ();
-			Utils.CheckResult (vkCreateSemaphore (dev, ref info, IntPtr.Zero, out tmp));
+			VkSemaphoreCreateInfo info = default;
+			CheckResult (vkCreateSemaphore (dev, ref info, IntPtr.Zero, out tmp));
 			return tmp;
 		}
 		public void DestroySemaphore (VkSemaphore semaphore) {
@@ -121,24 +123,24 @@ namespace vke {
 		/// Wait for this logical device to enter the idle state.
 		/// </summary>
 		public void WaitIdle () {
-			Utils.CheckResult (vkDeviceWaitIdle (dev));
+			CheckResult (vkDeviceWaitIdle (dev));
 		}
 		public VkRenderPass CreateRenderPass (VkRenderPassCreateInfo info) {
 			VkRenderPass renderPass;
-			Utils.CheckResult (vkCreateRenderPass (dev, ref info, IntPtr.Zero, out renderPass));
+			CheckResult (vkCreateRenderPass (dev, ref info, IntPtr.Zero, out renderPass));
 			return renderPass;
 		}
 
 		public VkImageView CreateImageView (VkImage image, VkFormat format, VkImageViewType viewType = VkImageViewType.ImageView2D, VkImageAspectFlags aspectFlags = VkImageAspectFlags.Color) {
 			VkImageView view;
-			VkImageViewCreateInfo infos = VkImageViewCreateInfo.New ();
+			VkImageViewCreateInfo infos = default;
 			infos.image = image;
 			infos.viewType = viewType;
 			infos.format = format;
 			infos.components = new VkComponentMapping { r = VkComponentSwizzle.R, g = VkComponentSwizzle.G, b = VkComponentSwizzle.B, a = VkComponentSwizzle.A };
 			infos.subresourceRange = new VkImageSubresourceRange (aspectFlags);
 
-			Utils.CheckResult (vkCreateImageView (dev, ref infos, IntPtr.Zero, out view));
+			CheckResult (vkCreateImageView (dev, ref infos, IntPtr.Zero, out view));
 			return view;
 		}
 		public void DestroyImageView (VkImageView view) {
@@ -165,7 +167,7 @@ namespace vke {
 			// Iterate over all memory types available for the Device used in this example
 			for (uint i = 0; i < phy.memoryProperties.memoryTypeCount; i++) {
 				if ((typeBits & 1) == 1) {
-					if ((phy.memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+					if ((phy.memoryProperties.memoryTypes.AsSpan[(int)i].propertyFlags & properties) == properties) {
 						return i;
 					}
 				}
@@ -189,12 +191,12 @@ namespace vke {
 		/// <returns>the vulkan shader module.</returns>
 		/// <param name="filename">path of the spv shader.</param>
 		public VkShaderModule CreateShaderModule (string filename) {
-			using (Stream stream = Utils.GetStreamFromPath (filename)) {
+			using (Stream stream = Helpers.GetStreamFromPath (filename)) {
 				using (BinaryReader br = new BinaryReader (stream)) {
 					byte[] shaderCode = br.ReadBytes ((int)stream.Length);
 					UIntPtr shaderSize = (UIntPtr)shaderCode.Length;
-					VkShaderModule shaderModule = CreateShaderModule (shaderCode.Pin (), shaderSize);
-					shaderCode.Unpin ();
+					Span<uint> tmp = MemoryMarshal.Cast<byte, uint> (shaderCode);
+					VkShaderModule shaderModule = CreateShaderModule (tmp.ToArray(), shaderSize);
 					return shaderModule;
 				}
 			}
@@ -205,12 +207,11 @@ namespace vke {
 		/// <param name="code">unmanaged pointer holding the spirv code. Pointer must stay valid only during
 		/// the call to this method.</param>
 		/// <param name="codeSize">spirv code byte size.</param>
-		public VkShaderModule CreateShaderModule (IntPtr code, UIntPtr codeSize) {
-			VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.New ();
-			moduleCreateInfo.codeSize = codeSize;
-			moduleCreateInfo.pCode = code;
-			Utils.CheckResult (vkCreateShaderModule (VkDev, ref moduleCreateInfo, IntPtr.Zero, out VkShaderModule shaderModule));
-			return shaderModule;
+		public VkShaderModule CreateShaderModule (uint[] code, UIntPtr codeSize) {
+			using (VkShaderModuleCreateInfo moduleCreateInfo = new VkShaderModuleCreateInfo (codeSize, code)) {
+				CheckResult (vkCreateShaderModule (Handle, moduleCreateInfo, IntPtr.Zero, out VkShaderModule shaderModule));
+				return shaderModule;
+			}
 		}
 
 		#region IDisposable Support

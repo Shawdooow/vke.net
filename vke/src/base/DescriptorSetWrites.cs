@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Vulkan;
 using static Vulkan.Vk;
+using System.Linq;
 
 namespace vke {
 	/// <summary>
@@ -61,7 +62,7 @@ namespace vke {
 		/// with another descriptorSet in parametters
 		/// </summary>
 	 	public void AddWriteInfo (DescriptorSet destSet, VkDescriptorSetLayoutBinding binding) {
-			VkWriteDescriptorSet wds = VkWriteDescriptorSet.New();
+			VkWriteDescriptorSet wds = default;
 			wds.descriptorType = binding.descriptorType;
 			wds.descriptorCount = binding.descriptorCount;
 			wds.dstBinding = binding.binding;
@@ -81,11 +82,11 @@ namespace vke {
 		/// provide a desDescriptor!
 		/// </summary>
 		public void AddWriteInfo (VkDescriptorSetLayoutBinding binding) {
-            VkWriteDescriptorSet wds = VkWriteDescriptorSet.New();
+            VkWriteDescriptorSet wds = default;
             wds.descriptorType = binding.descriptorType;
             wds.descriptorCount = binding.descriptorCount;
             wds.dstBinding = binding.binding;
-            WriteDescriptorSets.Add (wds); 
+            WriteDescriptorSets.Add (wds);
 		}
 
 		/// <summary>
@@ -106,31 +107,22 @@ namespace vke {
 				while (i < descriptors.Length) {
 					int firstDescriptor = i;
 					VkWriteDescriptorSet wds = WriteDescriptorSets[wdsPtr];
+					wds.sType = VkStructureType.WriteDescriptorSet;
 					if (dstSetOverride != null)
 						wds.dstSet = dstSetOverride.Value.Handle;
-					IntPtr pDescriptors = IntPtr.Zero;
 
-					if (wds.descriptorCount > 1) {
-						List<IntPtr> descPtrArray = new List<IntPtr> ();
-						for (int d = 0; d < wds.descriptorCount; d++) {
-							descPtrArray.Add (descriptors[i].Pin (pinCtx));
-							i++;
-						}
-						pDescriptors = descPtrArray.Pin (pinCtx);
-					} else {
-						pDescriptors = descriptors[i].Pin (pinCtx);
-						i++;
-					}
-					if (descriptors[firstDescriptor] is VkDescriptorBufferInfo)
-						wds.pBufferInfo = pDescriptors;
+					if (descriptors[i] is VkDescriptorBufferInfo)
+						wds.pBufferInfo = descriptors.SubArray (i,(int)wds.descriptorCount).Cast<VkDescriptorBufferInfo>().ToArray();
 					else if (descriptors[firstDescriptor] is VkDescriptorImageInfo)
-						wds.pImageInfo = pDescriptors;
-
+						wds.pImageInfo = descriptors.SubArray (i,(int)wds.descriptorCount).Cast<VkDescriptorImageInfo>().ToArray();
+					i+=(int)wds.descriptorCount;
 					WriteDescriptorSets[wdsPtr] = wds;
 					wdsPtr++;
 				}
-				vkUpdateDescriptorSets (dev.VkDev, (uint)WriteDescriptorSets.Count, WriteDescriptorSets.Pin (pinCtx), 0, IntPtr.Zero);
-			}			
+				vkUpdateDescriptorSets (dev.Handle, (uint)WriteDescriptorSets.Count, WriteDescriptorSets.Pin (pinCtx), 0, IntPtr.Zero);
+			}
+			foreach (VkWriteDescriptorSet wds in WriteDescriptorSets)
+				wds.Dispose();
 		}
 		/// <summary>
 		/// execute the descriptors writes targeting descriptorSets setted on AddWriteInfo call
@@ -156,10 +148,11 @@ namespace vke {
 						pDescriptors = descriptors[i].Pin (pinCtx);
 						i++;
 					}
+					/*
 					if (descriptors[firstDescriptor] is VkDescriptorBufferInfo)
 						wds.pBufferInfo = pDescriptors;
 					else if (descriptors[firstDescriptor] is VkDescriptorImageInfo)
-						wds.pImageInfo = pDescriptors;
+						wds.pImageInfo = pDescriptors;*/
 
 					WriteDescriptorSets[wdsPtr] = wds;
 					wdsPtr++;
@@ -178,37 +171,37 @@ namespace vke {
         Device dev;
         List<VkWriteDescriptorSet> WriteDescriptorSets = new List<VkWriteDescriptorSet> ();
 		List<object> descriptors = new List<object> ();
-        
+
 		public DescriptorSetWrites2 (Device device) {
             dev = device;
         }
         public void AddWriteInfo (DescriptorSet destSet, VkDescriptorSetLayoutBinding binding, VkDescriptorBufferInfo descriptor) {
-			if (!descriptors.Contains (descriptor)) 
+			if (!descriptors.Contains (descriptor))
 				descriptors.Add (descriptor);
-            VkWriteDescriptorSet wds = VkWriteDescriptorSet.New();
+            VkWriteDescriptorSet wds = default;
             wds.descriptorType = binding.descriptorType;
             wds.descriptorCount = binding.descriptorCount;
             wds.dstBinding = binding.binding;
-            wds.dstSet = destSet.handle;            
-            wds.pBufferInfo = descriptor.Pin ();            
-            
-			WriteDescriptorSets.Add (wds);            
+            wds.dstSet = destSet.handle;
+            wds.pBufferInfo = descriptor;
+
+			WriteDescriptorSets.Add (wds);
         }
         public void AddWriteInfo (DescriptorSet destSet, VkDescriptorSetLayoutBinding binding, VkDescriptorImageInfo descriptor) {
-			if (!descriptors.Contains (descriptor)) 
+			if (!descriptors.Contains (descriptor))
 				descriptors.Add (descriptor);
-            VkWriteDescriptorSet wds = VkWriteDescriptorSet.New();
+            VkWriteDescriptorSet wds = default;
             wds.descriptorType = binding.descriptorType;
             wds.descriptorCount = binding.descriptorCount;
             wds.dstBinding = binding.binding;
-            wds.dstSet = destSet.handle;            
-            wds.pImageInfo = descriptor.Pin ();
-            
-            WriteDescriptorSets.Add (wds);            
+            wds.dstSet = destSet.handle;
+            wds.pImageInfo = descriptor;
+
+            WriteDescriptorSets.Add (wds);
         }
 
         public void Update () {
-            vkUpdateDescriptorSets (dev.VkDev, (uint)WriteDescriptorSets.Count, WriteDescriptorSets.Pin (), 0, IntPtr.Zero);
+            vkUpdateDescriptorSets (dev.Handle, (uint)WriteDescriptorSets.Count, WriteDescriptorSets.Pin (), 0, IntPtr.Zero);
 			WriteDescriptorSets.Unpin ();
         }
 

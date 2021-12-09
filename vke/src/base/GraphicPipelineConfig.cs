@@ -35,23 +35,23 @@ namespace vke {
 		/// VkPipelineBindPoint.Graphics is set by default,
 		/// </summary>
 		public VkPipelineBindPoint bindPoint = VkPipelineBindPoint.Graphics;
-		public VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = VkPipelineInputAssemblyStateCreateInfo.New ();
-		public VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.New ();
-		public IList<VkViewport> Viewports = new List<VkViewport> ();
-		public IList<VkRect2D> Scissors = new List<VkRect2D> ();
-		public VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.New ();
-		public VkPipelineMultisampleStateCreateInfo multisampleState = VkPipelineMultisampleStateCreateInfo.New ();
-		public IList<VkPipelineColorBlendAttachmentState> blendAttachments = new List<VkPipelineColorBlendAttachmentState> ();
-		public IList<VkDynamicState> dynamicStates = new List<VkDynamicState> ();
-		public IList<VkVertexInputBindingDescription> vertexBindings = new List<VkVertexInputBindingDescription> ();
-		public IList<VkVertexInputAttributeDescription> vertexAttributes = new List<VkVertexInputAttributeDescription> ();
+		public VkPipelineInputAssemblyStateCreateInfo inputAssemblyState;
+		public VkPipelineRasterizationStateCreateInfo rasterizationState;
+		public List<VkViewport> Viewports = new List<VkViewport> ();
+		public List<VkRect2D> Scissors = new List<VkRect2D> ();
+		public VkPipelineDepthStencilStateCreateInfo depthStencilState;
+		public VkPipelineMultisampleStateCreateInfo multisampleState;
+		public List<VkPipelineColorBlendAttachmentState> blendAttachments = new List<VkPipelineColorBlendAttachmentState> ();
+		public List<VkDynamicState> dynamicStates = new List<VkDynamicState> ();
+		public List<VkVertexInputBindingDescription> vertexBindings = new List<VkVertexInputBindingDescription> ();
+		public List<VkVertexInputAttributeDescription> vertexAttributes = new List<VkVertexInputAttributeDescription> ();
 		/// <summary>
 		/// List of ShaderInfo's used to in this pipeline configuration. Those shaders have to be Disposed
 		/// after pipeline creation from this configuration. The 'DisposeShaders' helper method with clear the list.
 		/// To replace a single shader between two use of this configuration object to create two different pipelines, use
 		/// the 'ReplaceShader' helper method to automatically dispose the replace shader.
 		/// </summary>
-		public IList<ShaderInfo> Shaders = new List<ShaderInfo> ();
+		public List<ShaderInfo> Shaders = new List<ShaderInfo> ();
 		public VkBool32 ColorBlendLogicOpEnable = false;
 		public VkLogicOp ColorBlendLogicOp;
 		public Vector4 ColorBlendConstants;
@@ -122,7 +122,7 @@ namespace vke {
 			for (uint i = 0; i < attribsDesc.Length; i++) {
 				vertexAttributes.Add (new VkVertexInputAttributeDescription (binding, i + currentAttributeIndex, attribsDesc[i], currentAttributeoffset));
 				VkFormatSize fs;
-				Utils.vkGetFormatSize (attribsDesc[i], out fs);
+				Helpers.vkGetFormatSize (attribsDesc[i], out fs);
 				currentAttributeoffset += fs.blockSizeInBits / 8;
 			}
 			currentAttributeIndex += (uint)attribsDesc.Length;

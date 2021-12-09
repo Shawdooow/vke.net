@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Vulkan;
 using System.Linq;
 using static Vulkan.Vk;
+using static Vulkan.Utils;
 
 namespace vke {
 	public class GraphicPipeline : Pipeline {
@@ -53,63 +54,57 @@ namespace vke {
 
 				using (PinnedObjects pctx = new PinnedObjects ()) {
 
-					VkPipelineColorBlendStateCreateInfo colorBlendInfo = VkPipelineColorBlendStateCreateInfo.New ();
+					VkPipelineColorBlendStateCreateInfo colorBlendInfo = default;
 					colorBlendInfo.logicOpEnable = cfg.ColorBlendLogicOpEnable;
 					colorBlendInfo.logicOp = cfg.ColorBlendLogicOp;
-					unsafe {
-						colorBlendInfo.blendConstants[0] = cfg.ColorBlendConstants.X;
-						colorBlendInfo.blendConstants[1] = cfg.ColorBlendConstants.Y;
-						colorBlendInfo.blendConstants[2] = cfg.ColorBlendConstants.Z;
-						colorBlendInfo.blendConstants[3] = cfg.ColorBlendConstants.W;
-					}
-					colorBlendInfo.attachmentCount = (uint)cfg.blendAttachments.Count;
-					colorBlendInfo.pAttachments = cfg.blendAttachments.Pin (pctx);
+					colorBlendInfo.blendConstants = cfg.ColorBlendConstants;
+					colorBlendInfo.pAttachments = cfg.blendAttachments;
 
-					VkPipelineDynamicStateCreateInfo dynStatesInfo = VkPipelineDynamicStateCreateInfo.New ();
-					dynStatesInfo.dynamicStateCount = (uint)cfg.dynamicStates.Count;
-					dynStatesInfo.pDynamicStates = cfg.dynamicStates.Cast<int> ().ToArray ().Pin (pctx);
+					VkPipelineDynamicStateCreateInfo dynStatesInfo = default;
+					dynStatesInfo.pDynamicStates = cfg.dynamicStates;
 
-					VkPipelineVertexInputStateCreateInfo vertInputInfo = VkPipelineVertexInputStateCreateInfo.New ();
-					vertInputInfo.vertexBindingDescriptionCount = (uint)cfg.vertexBindings.Count;
-					vertInputInfo.pVertexBindingDescriptions = cfg.vertexBindings.Pin (pctx);
-					vertInputInfo.vertexAttributeDescriptionCount = (uint)cfg.vertexAttributes.Count;
-					vertInputInfo.pVertexAttributeDescriptions = cfg.vertexAttributes.Pin (pctx);
+					VkPipelineVertexInputStateCreateInfo vertInputInfo = default;
+					vertInputInfo.pVertexBindingDescriptions = cfg.vertexBindings;
+					vertInputInfo.pVertexAttributeDescriptions = cfg.vertexAttributes;
 
-					VkPipelineViewportStateCreateInfo viewportState = VkPipelineViewportStateCreateInfo.New ();
+					VkPipelineViewportStateCreateInfo viewportState = default;
 					if (cfg.Viewports.Count > 0) {
-						viewportState.viewportCount = (uint)cfg.Viewports.Count;
-						viewportState.pViewports = cfg.Viewports.Pin (pctx);
+						viewportState.pViewports = cfg.Viewports;
 					} else
 						viewportState.viewportCount = 1;
 
 					if (cfg.Scissors.Count > 0) {
-						viewportState.scissorCount = (uint)cfg.Scissors.Count;
-						viewportState.pScissors = cfg.Scissors.Pin (pctx);
+						viewportState.pScissors = cfg.Scissors;
 					} else
 						viewportState.scissorCount = 1;
 
-					VkGraphicsPipelineCreateInfo info = VkGraphicsPipelineCreateInfo.New ();
+					VkGraphicsPipelineCreateInfo info = default;
 					info.renderPass = RenderPass.handle;
 					info.layout = Layout.handle;
-					info.pVertexInputState = vertInputInfo.Pin (pctx);
-					info.pInputAssemblyState = cfg.inputAssemblyState.Pin (pctx);
-					info.pRasterizationState = cfg.rasterizationState.Pin (pctx);
-					info.pColorBlendState = colorBlendInfo.Pin (pctx);
-					info.pMultisampleState = cfg.multisampleState.Pin (pctx);
-					info.pViewportState = viewportState.Pin (pctx);
-					info.pDepthStencilState = cfg.depthStencilState.Pin (pctx);
-					info.pDynamicState = dynStatesInfo.Pin (pctx);
-					info.stageCount = (uint)cfg.Shaders.Count;
-					info.pStages = shaderStages.Pin (pctx);
+					info.pVertexInputState = vertInputInfo;
+					info.pInputAssemblyState = cfg.inputAssemblyState;
+					info.pRasterizationState = cfg.rasterizationState;
+					info.pColorBlendState = colorBlendInfo;
+					info.pMultisampleState = cfg.multisampleState;
+					info.pViewportState = viewportState;
+					info.pDepthStencilState = cfg.depthStencilState;
+					info.pDynamicState = dynStatesInfo;
+					info.pStages = shaderStages;
 					info.subpass = cfg.SubpassIndex;
 
 					if (enableTesselation) {
-						VkPipelineTessellationStateCreateInfo tessellationInfo = VkPipelineTessellationStateCreateInfo.New();
+						VkPipelineTessellationStateCreateInfo tessellationInfo = default;
 						tessellationInfo.patchControlPoints = cfg.TessellationPatchControlPoints;
-						info.pTessellationState = tessellationInfo.Pin (pctx);
+						info.pTessellationState = tessellationInfo;
 					}
 
-					Utils.CheckResult (vkCreateGraphicsPipelines (Dev.VkDev, Cache == null ? VkPipelineCache.Null : Cache.handle, 1, ref info, IntPtr.Zero, out handle));
+					CheckResult (vkCreateGraphicsPipelines (Dev.Handle, Cache == null ? VkPipelineCache.Null : Cache.handle, 1, ref info, IntPtr.Zero, out handle));
+
+					vertInputInfo.Dispose();
+					viewportState.Dispose();
+					dynStatesInfo.Dispose();
+					colorBlendInfo.Dispose();
+					info.Dispose ();
 				}
 			}
 			base.Activate ();
